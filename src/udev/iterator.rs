@@ -28,20 +28,25 @@ use udev::{
 // When rust finally adds that feature, I can get rid of most of this file...
 
 // Create private.
-pub struct UdevIterator<'p, Sized? T: 'p> {
+pub struct UdevIterator<'p, T: 'p + ?Sized> {
     parent: &'p T,
     entry: libudev_c::udev_list_entry
 }
 
-impl<'p, Sized? T> Iterator<(&'p T, &'p str, Option<&'p str>)> for UdevIterator<'p, T> {
-    fn next(&mut self) -> Option<(&'p T, &'p str, Option<&'p str>)> {
+impl<'p, T: ?Sized> Iterator for UdevIterator<'p, T> {
+
+    type Item = (&'p T, &'p str, Option<&'p str>);
+
+    fn next(&mut self) -> Option<Self::Item> {
         if self.entry.is_null() {
             None
         } else {
             let ret = Some((
                 self.parent,
-                unsafe { util::c_to_str(libudev_c::udev_list_entry_get_name(self.entry)).unwrap() },
-                unsafe { util::c_to_str(libudev_c::udev_list_entry_get_value(self.entry)) }
+                util::c_to_str(
+                    libudev_c::udev_list_entry_get_name(self.entry)).unwrap(),
+                util::c_to_str(
+                    libudev_c::udev_list_entry_get_value(self.entry))
             ));
             self.entry = unsafe { libudev_c::udev_list_entry_get_next(self.entry) };
             ret
@@ -49,13 +54,13 @@ impl<'p, Sized? T> Iterator<(&'p T, &'p str, Option<&'p str>)> for UdevIterator<
     }
 }
 
-pub unsafe fn iterator<'a, Sized? T: 'a>(parent: &'a T, entry: libudev_c::udev_list_entry) -> UdevIterator<'a, T> {
+pub fn iterator<'a, T: 'a + ?Sized>(parent: &'a T, entry: libudev_c::udev_list_entry) -> UdevIterator<'a, T> {
     UdevIterator {
         parent: parent,
         entry: entry,
     }
 }
 
-pub type MappedIterator<'p, P: 'p, O> = iter::Map<'p, (&'p P, &'p str, Option<&'p str>), O, UdevIterator<'p, P>>;
-pub type FilterMappedIterator<'p, P: 'p, O> = iter::FilterMap<'p, (&'p P, &'p str, Option<&'p str>), O, UdevIterator<'p, P>>;
+pub type MappedIterator<'p, P: 'p, O> = iter::Map<O, UdevIterator<'p, P>>;
+pub type FilterMappedIterator<'p, P: 'p, O> = iter::FilterMap<O, UdevIterator<'p, P>>;
 

@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with udev-rs; If not, see <http://www.gnu.org/licenses/>.
 
+use std::ffi::CString;
+use std::io::Error;
 use std::ptr;
 use std::str::FromStr;
 
@@ -31,7 +33,6 @@ pub struct Monitor<'u> {
     monitor: libudev_c::udev_monitor
 }
 
-#[deriving(Show)]
 pub enum Action {
     Add,
     Remove,
@@ -42,7 +43,6 @@ pub enum Action {
     Other(String)
 }
 
-#[deriving(Show)]
 pub struct Event {
     pub action: Action,
     pub seqnum: u64
@@ -53,7 +53,7 @@ pub struct MonitorIterator<'m, 'u: 'm> {
     monitor: &'m Monitor<'u>
 }
 
-pub unsafe fn monitor(udev: &Udev, monitor: libudev_c::udev_monitor) -> Monitor {
+pub fn monitor(udev: &Udev, monitor: libudev_c::udev_monitor) -> Monitor {
     Monitor {
         udev: udev,
         monitor: monitor
@@ -71,9 +71,12 @@ impl<'u> Monitor<'u> {
     /// Exclude devices that don't match the specified subsystem or a previously specified
     /// subsystem.
     pub fn filter_by_subsystem(self, subsystem: &str) -> Monitor<'u> {
-        subsystem.with_c_str(|subsystem| util::handle_error(unsafe {
-            libudev_c::udev_monitor_filter_add_match_subsystem_devtype(self.monitor, subsystem, ptr::null())
-        }));
+        let cstr_subsystem = CString::new(subsystem).unwrap();
+        util::handle_error(unsafe {
+            libudev_c::udev_monitor_filter_add_match_subsystem_devtype(self.monitor,
+                                                                       cstr_subsystem.as_ptr(),
+                                                                       ptr::null())
+        });
         self
     }
     /// Filter by subsystem/devtype combination.
@@ -82,18 +85,23 @@ impl<'u> Monitor<'u> {
     /// previously specified subsystem/devtype combination (or any subsystem previously specified
     /// in a `filter_subsystem` invocation).
     pub fn filter_by_subsystem_devtype(self, subsystem: &str, devtype: &str) -> Monitor<'u> {
-        subsystem.with_c_str(|subsystem| devtype.with_c_str(|devtype| util::handle_error(unsafe {
-            libudev_c::udev_monitor_filter_add_match_subsystem_devtype(self.monitor, subsystem, devtype)
-        })));
+        let cstr_subsystem = CString::new(subsystem).unwrap();
+        let cstr_devtype = CString::new(devtype).unwrap();
+        util::handle_error(unsafe {
+            libudev_c::udev_monitor_filter_add_match_subsystem_devtype(self.monitor,
+                                                                       cstr_subsystem.as_ptr(),
+                                                                       cstr_devtype.as_ptr())
+        });
         self
     }
     /// Filter by tag.
     ///
     /// Exclude devices that don't match the specified tag or a previously specified tag.
     pub fn filter_by_tag(self, tag: &str) -> Monitor<'u> {
-        tag.with_c_str(|tag| util::handle_error(unsafe {
-            libudev_c::udev_monitor_filter_add_match_tag(self.monitor, tag)
-        }));
+        let cstr_tag = CString::new(tag).unwrap();
+        util::handle_error(unsafe {
+            libudev_c::udev_monitor_filter_add_match_tag(self.monitor, cstr_tag.as_ptr())
+        });
         self
     }
 
@@ -122,7 +130,6 @@ impl<'u> Monitor<'u> {
     }
 }
 
-#[unsafe_destructor]
 impl<'u> Drop for Monitor<'u> {
     fn drop(&mut self) {
         unsafe {
@@ -132,40 +139,46 @@ impl<'u> Drop for Monitor<'u> {
 }
 
 impl FromStr for Action {
-    fn from_str(s: &str) -> Option<Action> {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Action, Self::Err> {
         use self::Action::*;
 
         match s {
-            "add"       => Some(Add),
-            "remove"    => Some(Remove),
-            "change"    => Some(Change),
-            "move"      => Some(Move),
-            "online"    => Some(Online),
-            "offline"   => Some(Offline),
-            _           => Some(Other(s.to_string())),
+            "add"       => Ok(Add),
+            "remove"    => Ok(Remove),
+            "change"    => Ok(Change),
+            "move"      => Ok(Move),
+            "online"    => Ok(Online),
+            "offline"   => Ok(Offline),
+            _           => Ok(Other(s.to_string())),
         }
     }
 }
 
-impl<'m, 'u> Iterator<(Event, Device<'u>)> for MonitorIterator<'m, 'u> {
-    fn next(&mut self) -> Option<(Event, Device<'u>)> {
+impl<'m, 'u> Iterator for MonitorIterator<'m, 'u> {
+
+    type Item = (Event, Device<'u>);
+
+    fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Ok(Some(dev)) = util::check_errno(|| unsafe {
+            if let Ok(Some(dev)) = util::check_errno_mut(|| unsafe {
                 libudev_c::udev_monitor_receive_device(self.monitor.monitor)
             }) {
                 return Some((
                     Event {
-                        action: from_str(unsafe {
-                                    util::c_to_str(libudev_c::udev_device_get_action(dev))
-                                }.unwrap()).unwrap(),
+                        action: Action::from_str(
+                            util::c_to_str(
+                                libudev_c::udev_device_get_action(dev))
+                                .unwrap()).unwrap(),
                         seqnum: unsafe {
-                                    libudev_c::udev_device_get_seqnum(dev)
-                                }
+                            libudev_c::udev_device_get_seqnum(dev)
+                        }
                     },
-                    unsafe { device::device(self.monitor.udev, dev) }
+                    device::device(self.monitor.udev, dev)
                 ));
             }
         }
     }
+
 }
 

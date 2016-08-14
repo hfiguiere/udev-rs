@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with udev-rs; If not, see <http://www.gnu.org/licenses/>.
 
+use std::ffi::CString;
+
 use udev::{
     libudev_c,
     iterator
@@ -36,7 +38,7 @@ pub struct Query<'h, 'u: 'h> {
 }
 
 // Crate Private
-pub unsafe fn hwdb(udev: &Udev, hwdb: libudev_c::udev_hwdb) -> Hwdb {
+pub fn hwdb(udev: &Udev, hwdb: libudev_c::udev_hwdb) -> Hwdb {
     Hwdb { udev: udev, hwdb: hwdb }
 }
 
@@ -52,10 +54,12 @@ impl<'u> Hwdb<'u> {
     ///
     /// Only one query can exist at a time.
     pub fn query<'s>(&'s mut self, modalias: &str) -> Query<'s, 'u> {
+        let cstr_modalias = CString::new(modalias).unwrap();
         // HACK: take reference here because we can't reference self.hwdb inside the closure.
-        let entry = modalias.with_c_str(|modalias| {
-            unsafe { libudev_c::udev_hwdb_get_properties_list_entry(self.hwdb, modalias) }
-        });
+        let entry = unsafe {
+            libudev_c::udev_hwdb_get_properties_list_entry(self.hwdb,
+                                                           cstr_modalias.as_ptr())
+        };
 
         Query {
             hwdb: self,
@@ -67,13 +71,11 @@ impl<'u> Hwdb<'u> {
 impl<'h, 'u> Query<'h, 'u> {
     /// Iterate over the properties returned by this query.
     pub fn iter(&self) -> HwdbIterator {
-        unsafe {
-            iterator::iterator(self.hwdb, self.entry)
-        }.map(|(_, key, value)| (key, value.unwrap()))
+        iterator::iterator(self.hwdb, self.entry).map(
+            |(_, key, value)| (key, value.unwrap()))
     }
 }
 
-#[unsafe_destructor]
 impl<'u> Drop for Hwdb<'u> {
     fn drop(&mut self) {
         unsafe { libudev_c::udev_hwdb_unref(self.hwdb) };

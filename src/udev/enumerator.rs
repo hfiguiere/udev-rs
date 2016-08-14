@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with udev-rs; If not, see <http://www.gnu.org/licenses/>.
 
+use std::ffi::CString;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 use udev::{
@@ -46,7 +48,7 @@ pub unsafe fn enumerator<'u>(udev: &'u Udev, enumerator: libudev_c::udev_enumera
 #[doc(hidden)]
 pub type DeviceIterator<'e, 'u: 'e> = FilterMappedIterator<'e, Enumerator<'u>, Device<'u>>;
 #[doc(hidden)]
-pub type DevicePathIterator<'p> = MappedIterator<'p, Enumerator<'p>, Path>;
+pub type DevicePathIterator<'p> = MappedIterator<'p, Enumerator<'p>, PathBuf>;
 
 impl<'u> Enumerator<'u> {
     /// Get the udev context.
@@ -60,9 +62,11 @@ impl<'u> Enumerator<'u> {
     /// specified in a previous invocation of this function (on this enumerator). If this function
     /// has never been called, devices will not be filtered by subsystem.
     pub fn match_subsystem(self, subsystem: &str) -> Enumerator<'u> {
-        subsystem.with_c_str(|subsystem| util::handle_error(unsafe {
-            libudev_c::udev_enumerate_add_match_subsystem(self.enumerator, subsystem)
-        }));
+        let cstr_subsystem = CString::new(subsystem).unwrap();
+        util::handle_error(unsafe {
+            libudev_c::udev_enumerate_add_match_subsystem(
+                self.enumerator, cstr_subsystem.as_ptr())
+        });
         self
     }
 
@@ -70,9 +74,11 @@ impl<'u> Enumerator<'u> {
     ///
     /// No device added by a future scan will have the specified subsystem.
     pub fn match_not_subsystem(self, subsystem: &str) -> Enumerator<'u> {
-        subsystem.with_c_str(|subsystem| util::handle_error(unsafe {
-            libudev_c::udev_enumerate_add_nomatch_subsystem(self.enumerator, subsystem)
-        }));
+        let cstr_subsystem = CString::new(subsystem).unwrap();
+        util::handle_error(unsafe {
+            libudev_c::udev_enumerate_add_nomatch_subsystem(
+                self.enumerator, cstr_subsystem.as_ptr())
+        });
         self
     }
 
@@ -82,12 +88,18 @@ impl<'u> Enumerator<'u> {
     /// the (optionally) specified value.
     pub fn match_attribute(self, attr: &str, value: Option<&str>) -> Enumerator<'u> {
         fn it(e: &Enumerator, attr: *const i8, value: *const i8) {
-            util::handle_error(unsafe {libudev_c::udev_enumerate_add_match_sysattr(e.enumerator, attr, value)});
+            util::handle_error(unsafe {
+                libudev_c::udev_enumerate_add_match_sysattr(e.enumerator, attr, value)
+            });
         }
-        attr.with_c_str(|attr| match value {
-            Some(value) => value.with_c_str(|value| it(&self, attr, value)),
-            None => it(&self, attr, ptr::null())
-        });
+        let cstr_attr = CString::new(attr).unwrap();
+        match value {
+            Some(value) => {
+                let cstr_value = CString::new(value).unwrap();
+                it(&self, cstr_attr.as_ptr(), cstr_value.as_ptr())
+            },
+            None => it(&self, cstr_attr.as_ptr(), ptr::null())
+        };
         self
     }
 
@@ -97,12 +109,17 @@ impl<'u> Enumerator<'u> {
     /// the (optionally) specified value.
     pub fn match_not_attribute(self, attr: &str, value: Option<&str>) -> Enumerator<'u> {
         fn it(e: &Enumerator, attr: *const i8, value: *const i8) {
-            util::handle_error(unsafe {libudev_c::udev_enumerate_add_nomatch_sysattr(e.enumerator, attr, value)});
+            util::handle_error(unsafe {libudev_c::udev_enumerate_add_nomatch_sysattr(
+                e.enumerator, attr, value)});
         }
-        attr.with_c_str(|attr| match value {
-            Some(value) => value.with_c_str(|value| it(&self, attr, value)),
-            None => it(&self, attr, ptr::null())
-        });
+        let cstr_attr = CString::new(attr).unwrap();
+        match value {
+            Some(value) => {
+                let cstr_value = CString::new(value).unwrap();
+                it(&self, cstr_attr.as_ptr(), cstr_value.as_ptr())
+            },
+            None => it(&self, cstr_attr.as_ptr(), ptr::null())
+        };
         self
     }
 
@@ -114,10 +131,14 @@ impl<'u> Enumerator<'u> {
         fn it(e: &Enumerator, attr: *const i8, value: *const i8) {
             util::handle_error(unsafe {libudev_c::udev_enumerate_add_match_property(e.enumerator, attr, value)});
         }
-        attr.with_c_str(|attr| match value {
-            Some(value) => value.with_c_str(|value| it(&self, attr, value)),
-            None => it(&self, attr, ptr::null())
-        });
+        let cstr_attr = CString::new(attr).unwrap();
+        match value {
+            Some(value) => {
+                let cstr_value = CString::new(value).unwrap();
+                it(&self, cstr_attr.as_ptr(), cstr_value.as_ptr())
+            },
+            None => it(&self, cstr_attr.as_ptr(), ptr::null())
+        };
         self
     }
 
@@ -146,9 +167,10 @@ impl<'u> Enumerator<'u> {
     ///
     /// All devices added by future scans will match the specified tag.
     pub fn match_tag(self, tag: &str) -> Enumerator<'u> {
-        tag.with_c_str(|tag| util::handle_error( unsafe {
-            libudev_c::udev_enumerate_add_match_tag(self.enumerator, tag)
-        }));
+        let cstr_tag = CString::new(tag).unwrap();
+        util::handle_error( unsafe {
+            libudev_c::udev_enumerate_add_match_tag(self.enumerator, cstr_tag.as_ptr())
+        });
         self
     }
 
@@ -168,9 +190,10 @@ impl<'u> Enumerator<'u> {
     /// specified in a previous invocation of this function (on this enumerator). If this function
     /// has never been called, devices will not be filtered by sysname.
     pub fn match_sysname(self, sysname: &str) -> Enumerator<'u> {
-        sysname.with_c_str(|sysname| util::handle_error( unsafe {
-            libudev_c::udev_enumerate_add_match_sysname(self.enumerator, sysname)
-        }));
+        let cstr_sysname = CString::new(sysname).unwrap();
+        util::handle_error( unsafe {
+            libudev_c::udev_enumerate_add_match_sysname(self.enumerator, cstr_sysname.as_ptr())
+        });
         self
     }
 
@@ -179,9 +202,10 @@ impl<'u> Enumerator<'u> {
     /// Manually add a device to the enumerator bypassing matches. According to the libudev
     /// documentation, this can be useful for determine device dependency order (see iter below).
     pub fn add_device(self, device: &Device) -> Enumerator<'u> {
-        device.syspath().with_c_str(|syspath| util::handle_error(unsafe{
-            libudev_c::udev_enumerate_add_syspath(self.enumerator, syspath)
-        }));
+        let cstr_syspath = CString::new(device.syspath().to_str().unwrap()).unwrap();
+        util::handle_error(unsafe{
+            libudev_c::udev_enumerate_add_syspath(self.enumerator, cstr_syspath.as_ptr())
+        });
         self
     }
 
@@ -220,12 +244,11 @@ impl<'u> Enumerator<'u> {
     pub fn iter_paths(&self) -> DevicePathIterator {
         unsafe {
             iterator::iterator(self, libudev_c::udev_enumerate_get_list_entry(self.enumerator))
-        }.map(|(_, key, _)| Path::new(key))
+        }.map(|(_, key, _)| PathBuf::from(key))
     }
 
 }
 
-#[unsafe_destructor]
 impl<'p> Drop for Enumerator<'p> {
     fn drop(&mut self) {
         unsafe {

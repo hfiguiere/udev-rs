@@ -15,24 +15,20 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with udev-rs; If not, see <http://www.gnu.org/licenses/>.
 
-use std::raw::Slice;
-use std::{mem, ptr, str};
+use std::ffi::CStr;
+use std::str;
 
 use libc::{ENOMEM, c_int, c_char};
 use alloc::oom;
 
-pub unsafe fn c_to_str<'a>(s: *const c_char) -> Option<&'a str> {
+pub fn c_to_str<'a>(s: *const c_char) -> Option<&'a str> {
     if s.is_null() {
-        None
-    } else {
-        let mut cur = s;
-        let mut len = 0;
-        while *cur != 0 {
-            len += 1;
-            cur = cur.offset(1);
-        }
-        let slice = mem::transmute(Slice { data: s, len: len });
-        str::from_utf8(slice)
+        return None
+    }
+
+    unsafe {
+        let cstr =  CStr::from_ptr(s);
+        Some(str::from_utf8_unchecked(cstr.to_bytes()))
     }
 }
 
@@ -66,7 +62,23 @@ pub fn set_errno(value: c_int) {
     }
 }
 
-pub fn check_errno<I, T: ptr::RawPtr<I>>(f: || -> T) -> Result<Option<T>, c_int> {
+pub fn check_errno_mut<I, F>(f: F) -> Result<Option<*mut I>, c_int>
+    where F : Fn() -> *mut I {
+    set_errno(0);
+    let result = f();
+    if result.is_null() {
+        match get_errno() {
+            ENOMEM => oom(),
+            0 => Ok(None),
+            e => Err(e)
+        }
+    } else {
+        Ok(Some(result))
+    }
+}
+
+pub fn check_errno<I, F>(f: F) -> Result<Option<*const I>, c_int>
+    where F : Fn() -> *const I {
     set_errno(0);
     let result = f();
     if result.is_null() {

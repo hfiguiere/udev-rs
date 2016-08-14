@@ -13,3 +13,6 @@ license = "LGPL-2.1"
 keywords = ["udev", "systemd", "linux", "bindings"]
 
 version = "0.1.0"
+
+[dependencies]
+time = "0.1"
