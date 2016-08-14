@@ -19,7 +19,7 @@ This is alpha quality and my first rust project. Please comment/review my code
 
 ### Threading
 
-One caviat to note is that this library is not thread safe (you can't share
+One caveat to note is that this library is not thread safe (you can't share
 data structures between threads). Unfortunately, this means a udev context and
 all udev objects created from it will have to stay within the same thread.
 
@@ -43,7 +43,7 @@ In the future, I might consider adding a simpler (saner) query interface.
 
 ### Iterator Proliferation
 
-You might notice the plethera of iterators that basically just map/filter the
+You might notice the plethora of iterators that basically just map/filter the
 private UdevIterator. I used to use map/filter but then I ended up exposing
 implementation details in return types. If there is a better way to do this
 (that rust currently supports...), please tell me.
